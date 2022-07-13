@@ -210,8 +210,8 @@ public class Blockchain {
                     setCurrentHash(hash);
                     setCurrentIndex(blockHeader.getIndex());
 
-                    //TreeSet<Transaction> txs = getCohorts();
-                    //BlockLSH.getCohortID(txs, BlockLSH.myCohortHash);
+                    TreeSet<Transaction> txs = getCohorts();
+                    BlockLSH.getCohortID(txs, BlockLSH.myCohortHash);
                 }
                 else if(getChainTip().getTotalDifficulty() < blockHeader.getTotalDifficulty()) {
                     System.out.println("updating chaintip...");
@@ -221,8 +221,8 @@ public class Blockchain {
                     setCurrentIndex(blockHeader.getIndex());
                     System.out.println("new chaintip set");
 
-                    //TreeSet<Transaction> txs = getCohorts();
-                    //BlockLSH.getCohortID(txs, BlockLSH.myCohortHash);
+                    TreeSet<Transaction> txs = getCohorts();
+                    BlockLSH.getCohortID(txs, BlockLSH.myCohortHash);
                 }
                 System.out.println("chaintip checked..");
                 System.out.println("checking fileheader data");
