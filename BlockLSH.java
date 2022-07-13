@@ -154,7 +154,6 @@ public class BlockLSH {
             }
 
             cohort = myCohort.substring(0, prefixSize);
-            Main.kai.add(saiz);
         }
 
         if(prefixSize-1 <= 0) {
