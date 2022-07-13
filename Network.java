@@ -145,7 +145,7 @@ public class Network {
 
             // Check if bootstrap was successful
             if(peer.peerBean().peerMap().all().size() == 0) {
-
+                // no peers present in network, so nothing to do
             }
             else {
                 // ask peers for their chaintip
@@ -163,7 +163,9 @@ public class Network {
                         try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(getTxFile(), true))) {
                             Transaction tx = (Transaction) o;
                             System.out.println("TX RECEIVED: " + o.toString());
-                            oos.writeObject(o);
+                            if(new Miner().verifyMined(tx)) {
+                                oos.writeObject(o);
+                            }
                         } catch (Exception e) {
                             System.out.println("TX RCV ERROR: " + e);
                         }
@@ -239,17 +241,7 @@ public class Network {
                                 }
 
                                 else if(success) {
-                                    FileOutputStream fos = new FileOutputStream("cohortID");
-                                    TreeSet<Transaction> txs = chain.getCohorts();
-                                    String fullCohort = BlockLSH.getCohortHash();
-
-                                    String cohortID = BlockLSH.getCohortID(txs, fullCohort);
-
-                                    fos.write(cohortID.getBytes(StandardCharsets.UTF_8));
-                                    fos.close();
-
-                                    System.out.println("full cohort;        " + fullCohort);
-                                    System.out.println("new cohortID set;   " + cohortID);
+                                    // we are validated and all caught up, nothing to do
                                 }
                             }
 
@@ -318,7 +310,7 @@ public class Network {
                             }
 
                             else if(msg.equals("ct-null")) {
-
+                                // do nothing
                             }
 
                         } catch(Exception e) {
@@ -342,7 +334,7 @@ public class Network {
         }
     }
 
-    /** Wait for 15sec, then start evaluating chain tips
+    /** Wait for 30sec, then start evaluating chain tips
      * @param start Boolean value used to make sure count is only executed once
      */
     private void startCount(boolean start) {
@@ -356,7 +348,7 @@ public class Network {
                             t.cancel();
                         }
                     },
-                    15000
+                    30000
             );
         }
     }

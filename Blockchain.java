@@ -28,12 +28,12 @@ public class Blockchain {
     // ## Number of seconds between a valid cohort hash                                                               ##
     // ## (once expired will no longer be included in cohort ID calculation, users will need to update and resend it) ##
     // #################################################################################################################
-    public static long expiredTime = 60;
+    public static long expiredTime = 86400; // 24 hours
 
     // ####################################################################################################
     // ## Number of seconds between each new block (PoW difficulty will be adjusted based on this value) ##
     // ####################################################################################################
-    public static long blockInterval = 30;
+    public static long blockInterval = 3600; // 1 hour
 
 
     /** index db store:     f+filename  : indexFile     eg. fblocks0 : file.header
@@ -138,22 +138,27 @@ public class Blockchain {
             else {
                 Block b = (Block) SerializationUtils.deserialize(contents);
                 System.out.println("got block with hash: " + ch);
+                try {
+                    // TODO; doublecheck again?
+                    if ( ( (currentDate.getTime() - sdf.parse(b.getDate()).getTime() ) / 1000 ) < expiredTime) {
+                        // loop over its contents and add valid cohorts
+                        for (Transaction tx : b.getTransactions()) {
+                            Date msgDate = sdf.parse(tx.getDate());
+                            long diffTime = (currentDate.getTime() - msgDate.getTime()) / 1000;
 
-                // loop over its contents and add valid cohorts
-                for (Transaction tx : b.getTransactions()) {
-                    try {
-                        Date msgDate = sdf.parse(tx.getDate());
-                        long diffTime = (currentDate.getTime() - msgDate.getTime()) / 1000;
-
-                        if (diffTime < expiredTime) {
-                            validCohorts.add(tx);
-                        } else {
-                            late = true;
+                            if (diffTime < expiredTime) {
+                                validCohorts.add(tx);
+                            } else {
+                                late = true;
+                            }
                         }
-                    } catch (Exception e) {
-                        System.out.println("cohort get date err: " + e);
                     }
-                }
+                    else {
+                        late = true;
+                    }
+                } catch (Exception e) {
+                System.out.println("cohort get date err: " + e);
+            }
 
 
                 // get child block and increase count
@@ -171,7 +176,7 @@ public class Blockchain {
      * @param block The block object we want to store
      */
     public void storeBlock(String hash, Block block) {
-        // TODO; ? atomicity -> either all changes made or none..
+        // TODO; atomicity -> either all changes made or none..
         System.out.println("storing block: " + hash);
         try {
 
@@ -204,6 +209,9 @@ public class Blockchain {
                     setCurrentDifficultyTotal(blockHeader.getTotalDifficulty());
                     setCurrentHash(hash);
                     setCurrentIndex(blockHeader.getIndex());
+
+                    //TreeSet<Transaction> txs = getCohorts();
+                    //BlockLSH.getCohortID(txs, BlockLSH.myCohortHash);
                 }
                 else if(getChainTip().getTotalDifficulty() < blockHeader.getTotalDifficulty()) {
                     System.out.println("updating chaintip...");
@@ -212,6 +220,9 @@ public class Blockchain {
                     setCurrentHash(hash);
                     setCurrentIndex(blockHeader.getIndex());
                     System.out.println("new chaintip set");
+
+                    //TreeSet<Transaction> txs = getCohorts();
+                    //BlockLSH.getCohortID(txs, BlockLSH.myCohortHash);
                 }
                 System.out.println("chaintip checked..");
                 System.out.println("checking fileheader data");
@@ -221,8 +232,8 @@ public class Blockchain {
                     indexFile fileHeader = new indexFile(1, block.getIndex(), block.getIndex(), block.getTotalDifficulty(), block.getTotalDifficulty(), block.getDate(), block.getDate());
                     byte[] bytesFile = SerializationUtils.serialize(fileHeader);
                     add(getIndexDB(), ("fblocks" + fileNum).getBytes(), bytesFile);
-
-                } else {
+                }
+                else {
                     byte[] res = read(getIndexDB(), ("fblocks" + fileNum).getBytes());
                     indexFile oldIndex = (indexFile) SerializationUtils.deserialize(res);
 
@@ -306,7 +317,7 @@ public class Blockchain {
                 }
                 else {
                     System.out.println("merkle root not correct..");
-                    // TODO; ? reject chain
+                    // no need to reject whole chain as if some blocks were valid, they can be stored in DB
                 }
             }
             else {
@@ -706,18 +717,6 @@ public class Blockchain {
                                 // all valid, so store and remove from list
                                 storeBlock(new Miner().hash(ub.getBlock()), ub.getBlock());
                                 unofficial.remove(ub);
-
-                                FileOutputStream fos = new FileOutputStream("cohortID");
-                                TreeSet<Transaction> txs = getCohorts();
-                                String fullCohort = BlockLSH.getCohortHash();
-
-                                String cohortID = BlockLSH.getCohortID(txs, fullCohort);
-
-                                fos.write(cohortID.getBytes(StandardCharsets.UTF_8));
-                                fos.close();
-
-                                System.out.println("[blockchain.class] full cohort;        " + fullCohort);
-                                System.out.println("[blockchain.class] new cohortID set;   " + cohortID);
                             }
                         }
                         else {
@@ -745,7 +744,7 @@ public class Blockchain {
             hash = getChainTip().getPrevHash();
         }
 
-        // TODO; needs more testing
+        // TODO; needs more testing, should probably request whole chain just in case
         while(count != 30) {
             Block b = getBlock(hash);
 
@@ -778,7 +777,7 @@ public class Blockchain {
             byte[] contents = read(getBlockDB(), h.getBytes() );
             Block b = (Block) SerializationUtils.deserialize(contents);
             System.out.println("got block with ph: " + b.getPreviousHash());
-            blockList.addLast(b);
+            blockList.addLast(b); // order won't matter later
             System.out.println("block added: " + new Miner().hash(b));
         }
 
@@ -800,7 +799,7 @@ public class Blockchain {
         System.out.println("added chaintip header..");
 
         // check if we need to go further down the chain
-        while( !(header.getPrevHash().equals(h)) ) {
+        while( !(header.getPrevHash().equals(h)) || (header.getPrevHash().equals("GENESIS")) ) {
             String prevHash = header.getPrevHash();
             byte[] contents = read(getIndexDB(), ("b"+prevHash).getBytes() );
             header = (indexBlock) SerializationUtils.deserialize(contents);

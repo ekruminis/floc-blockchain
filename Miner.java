@@ -2,7 +2,10 @@ import java.io.*;
 import java.math.BigInteger;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 
 public class Miner {
     public TreeSet<Transaction> txs = new TreeSet<Transaction>();
@@ -15,18 +18,19 @@ public class Miner {
 
     /** Reads transactions from file and adds them to a TreeSet
      * @param f The file that contains the transactions */
-    public void fetchTransactions(File f) {
+    public void fetchTransactions(File f, Network n) {
         try {
             // Open file
             FileInputStream fis = new FileInputStream(f);
             ObjectInputStream ois = new ObjectInputStream(fis);
-            System.out.println("opened 1");
+
+            TreeSet<Transaction> inchainTXs = n.getChain().getCohorts();
 
             // add tx, ensuring no duplicates
             Object obj = null;
             while((obj = ois.readObject()) != null) {
                 Transaction tx = (Transaction)obj;
-                if(!txs.contains(tx))  {
+                if(!txs.contains(tx) && verifyExpiration(tx) && !inchainTXs.contains(tx))  {
                     txs.add(tx);
                 }
                 ois = new ObjectInputStream(fis);
@@ -42,6 +46,29 @@ public class Miner {
         } catch(Exception e) {
             System.out.println("FETCHING ERROR: " + e);
         }
+    }
+
+    /** Checks whether a transaction object has expired or not
+     * @param tx The transaction object to validate
+     * @return Returns true if tx is still valid (not expired), or false, if expired
+     */
+    public static boolean verifyExpiration(Transaction tx) {
+        boolean result = false;
+        try {
+            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
+            Date currentDate = sdf.parse(Transaction.makeDate());
+
+            Date msgDate = sdf.parse(tx.getDate());
+            long diffTime = (currentDate.getTime() - msgDate.getTime()) / 1000;
+
+            if (diffTime < Blockchain.expiredTime) {
+                result = true;
+            }
+        }
+        catch(Exception e) {
+            System.out.println("verification error; " + e);
+        }
+        return result;
     }
 
     /** Hashes a block and returns its hash as String (SHA256)

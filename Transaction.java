@@ -5,7 +5,7 @@ import java.util.Date;
 
 public class Transaction implements Serializable, Comparable<Transaction> {
     private String date;
-    private String cohortID;
+    private String cohort;
     public long nonce;
 
     /** Returns current date
@@ -17,7 +17,7 @@ public class Transaction implements Serializable, Comparable<Transaction> {
 
     public Transaction(String c) {
         this.date = makeDate();
-        this.cohortID = c;
+        this.cohort = c;
         this.nonce = 0;
     }
 
@@ -25,7 +25,7 @@ public class Transaction implements Serializable, Comparable<Transaction> {
     public String toString() {
         return "Transaction{" +
                 "date='" + date + '\'' +
-                ", cohortID='" + cohortID + '\'' +
+                ", cohort='" + cohort + '\'' +
                 ", nonce=" + nonce +
                 '}';
     }
@@ -33,8 +33,8 @@ public class Transaction implements Serializable, Comparable<Transaction> {
     /** Returns cohort ID of the transaction
      * @return cohort ID value
      */
-    public String getCohortID() {
-        return cohortID;
+    public String getCohort() {
+        return cohort;
     }
 
     /** Returns nonce value of the transaction
@@ -49,12 +49,19 @@ public class Transaction implements Serializable, Comparable<Transaction> {
      */
     public String getDate() { return date; }
 
+    public void setCohort(String cohort) {
+        this.cohort = cohort;
+    }
+
     @Override
     public boolean equals(Object obj) {
         return !super.equals(obj);
     }
 
-    //TODO; ? implement comparison
+    /**
+     * Compares two transaction objects by their hash values
+     * @param tx the object to compare to
+     */
     @Override
     public int compareTo(@NotNull Transaction tx) {
         return BlockLSH.hash(this).compareTo(BlockLSH.hash(tx));

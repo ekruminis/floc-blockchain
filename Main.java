@@ -1,9 +1,12 @@
 import org.apache.commons.lang3.SerializationUtils;
 
-import java.io.PrintWriter;
-import java.util.Random;
-import java.util.Scanner;
-import java.util.TreeSet;
+import java.io.*;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.*;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 
 public class Main extends Thread {
@@ -26,11 +29,10 @@ public class Main extends Thread {
     // command line UI
     public void run () {
         System.out.println(" *** VALID COMMANDS ***");
-        System.out.println("'send'          -> calculates cohort and sends it off to other peers");
         System.out.println("'mine'          -> mines a block and sends it off to other peers");
         System.out.println("'my-cohort'     -> calculates cohort ID for user");
         System.out.println("'all-cohorts'   -> prints all currently valid cohorts in network");
-        System.out.println("'test'          -> generates 1000 random cohorts, mines block");
+        System.out.println("'test'          -> generates and mines 10 blocks with 1000 random cohorts");
         System.out.println("'settings'      -> change settings of model (NOT SAVED AFTER EXIT)");
         System.out.println("'exit'          -> shuts down");
 
@@ -39,42 +41,42 @@ public class Main extends Thread {
             Scanner sc = new Scanner(System.in);
 
             cmd = sc.nextLine();
-            if(cmd.equals("send")) {
-                System.out.println("sending my cohort ID..");
 
-                BlockLSH.sendTransaction(network);
-            }
-            else if(cmd.equals("mine")) {
-                System.out.println("mining a new block..");
+            if(cmd.equals("mine")) {
+                for(int x=0;x<100;x++) {
+                    System.out.println("mining a new block..");
 
-                miner.fetchTransactions(network.getTxFile());
-                Block unminedBlock = miner.createBlock(network.getChain());
-                Block minedBlock = miner.mineBlock(unminedBlock);
+                    miner.fetchTransactions(network.getTxFile(), network);
+                    Block unminedBlock = miner.createBlock(network.getChain());
+                    Block minedBlock = miner.mineBlock(unminedBlock);
 
-                try {
-                    new PrintWriter(network.getTxFile()).close();
-                    miner.txs =  new TreeSet<Transaction>();
-                } catch(Exception er) {
-                    System.out.println("FAIL DELETING TX FILE CONTENTS: " + er);
+                    try {
+                        new PrintWriter(network.getTxFile()).close();
+                        miner.txs = new TreeSet<Transaction>();
+                    } catch (Exception er) {
+                        System.out.println("FAIL DELETING TX FILE CONTENTS: " + er);
+                    }
+
+                    System.out.println("txs in block: " + minedBlock.getTransactions().size());
+                    network.getChain().storeBlock(miner.hash(minedBlock), minedBlock);
+                    network.announce(minedBlock);
                 }
-
-                System.out.println("txs in block: " + minedBlock.getTransactions().size());
-                network.getChain().storeBlock(miner.hash(minedBlock), minedBlock);
-                network.announce(minedBlock);
             }
             else if(cmd.equals("my-cohort")) {
-                System.out.println("getting cohort ID..");
-                String s = BlockLSH.getCohortID(network.getChain().getCohorts(), BlockLSH.getCohortHash());
+//                System.out.println("getting cohort ID..");
+//                String s = BlockLSH.getCohortID(network.getChain().getCohorts(), BlockLSH.getCohortHash());
+//
+//                System.out.println("my full cohort =    " + BlockLSH.getCohortHash());
+//                System.out.println("my cohort ID =      " + s);
 
-                System.out.println("my full cohort =    " + BlockLSH.getCohortHash());
-                System.out.println("my cohort ID =      " + s);
+                System.out.println("my cohort ID =      " + BlockLSH.readCohortID());
             }
             else if(cmd.equals("all-cohorts")) {
                 System.out.println("getting all valid cohorts..");
                 TreeSet<Transaction> txs = network.getChain().getCohorts();
 
                 for(Transaction t : txs) {
-                    System.out.println(t.getCohortID());
+                    System.out.println(t.getCohort());
                 }
 
                 System.out.println("\n** all cohorts printed **");
@@ -85,35 +87,40 @@ public class Main extends Thread {
                 System.exit(0);
             }
             else if(cmd.equals("test")) {
-                for(int y=0;y<1000;y++) {
-                    String h = "";
-                    for (int x = 0; x < 50; x++) {
-                        Random rand = new Random();
-                        int r = rand.nextInt() % 2;
-                        h += (int)Math.round( Math.random() );
+                for(int x2=0;x2<10;x2++) {
+                    TreeSet<Transaction> txs = new TreeSet<>();
+                    for (int y = 0; y < 1000; y++) {
+                    
+                        // generate a random cohort hash of 50 bits
+                        String h = "";
+                        for (int x = 0; x < 50; x++) {
+                            Random rand = new Random();
+                            int r = rand.nextInt() % 2;
+                            h += (int) Math.round(Math.random());
+                        }
+                        Transaction tx = new Transaction(h);
+                        BlockLSH.sendTransaction(network, tx);
                     }
-                    Transaction tx = new Transaction(h);
-                    BlockLSH.sendTransaction(network,tx);
+
+                    System.out.println("mining a new block..");
+
+                    miner.fetchTransactions(network.getTxFile(), network);
+                    Block unminedBlock = miner.createBlock(network.getChain());
+                    Block minedBlock = miner.mineBlock(unminedBlock);
+
+                    try {
+                        new PrintWriter(network.getTxFile()).close();
+                        miner.txs = new TreeSet<Transaction>();
+                    } catch (Exception er) {
+                        System.out.println("FAIL DELETING TX FILE CONTENTS: " + er);
+                    }
+
+                    System.out.println("txs in block: " + minedBlock.getTransactions().size());
+                    network.getChain().storeBlock(miner.hash(minedBlock), minedBlock);
+                    network.announce(minedBlock);
                 }
-
-                System.out.println("mining a new block..");
-
-                miner.fetchTransactions(network.getTxFile());
-                Block unminedBlock = miner.createBlock(network.getChain());
-                Block minedBlock = miner.mineBlock(unminedBlock);
-
-                try {
-                    new PrintWriter(network.getTxFile()).close();
-                    miner.txs =  new TreeSet<Transaction>();
-                } catch(Exception er) {
-                    System.out.println("FAIL DELETING TX FILE CONTENTS: " + er);
-                }
-
-                System.out.println("txs in block: " + minedBlock.getTransactions().size());
-                network.getChain().storeBlock(miner.hash(minedBlock), minedBlock);
-                network.announce(minedBlock);
-
             }
+
             else if(cmd.equals("settings")) {
                 System.out.print("\n(current=" + BlockLSH.kSize + ") Min. number of users for a valid cohort ID: ");
                 BlockLSH.kSize = Integer.parseInt(sc.nextLine());
@@ -127,11 +134,13 @@ public class Main extends Thread {
                 System.out.print("\ncurrent=" + Blockchain.blockInterval +") Number of seconds between each new block: ");
                 Blockchain.blockInterval = Long.parseLong(sc.nextLine());
 
+                System.out.print("\ncurrent=" + BlockLSH.hashSize + ") Number of bits of the cohort hash to send: ");
+                Blockchain.blockInterval = Long.parseLong(sc.nextLine());
+
                 System.out.println("Settings updated.. (NOT SAVED AFTER APP CLOSURE)");
             }
             else {
                 System.out.println("wrong input, try the following;");
-                System.out.println("'send'          -> calculates cohort and sends it off to other peers");
                 System.out.println("'mine'          -> mines a block and sends it off to other peers");
                 System.out.println("'my-cohort'     -> calculates cohort ID for user");
                 System.out.println("'all-cohorts'   -> prints all currently valid cohorts in network");
@@ -148,9 +157,62 @@ public class Main extends Thread {
         Main m = new Main();
         m.start();
 
+        Runnable expiredRunnable = new Runnable() {
+            public void run() {
+                System.out.println("cohort expired, sending new..");
+                BlockLSH.sendTransaction(network);
+            }
+        };
+
+        ScheduledExecutorService executor = Executors.newScheduledThreadPool(1);
+
         System.out.println("connecting..");
         network.connect(args[0], Integer.parseInt(args[1]), Integer.parseInt(args[2]));
+        //network.connect("86.40.24.244", 1233, 1234);
 
+        long initDelay = 0;
+	
+	// read (if exists) my cohort data to see when it needs to be updated
+        if(new File("myCohortObj").exists()) {
+            try {
+                // Open file
+                FileInputStream fis = new FileInputStream("myCohortObj");
+                ObjectInputStream ois = new ObjectInputStream(fis);
+                SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
+
+                Date currentDate = null;
+
+                try {
+                    currentDate = sdf.parse(Transaction.makeDate());
+                } catch (ParseException e) {
+                    e.printStackTrace();
+                }
+
+                // add tx, ensuring no duplicates
+                Object obj = null;
+                while((obj = ois.readObject()) != null) {
+                    Transaction tx = (Transaction)obj;
+                    Date msgDate = sdf.parse(tx.getDate());
+                    long diffTime = (currentDate.getTime() - msgDate.getTime()) / 1000;
+
+                    if (diffTime < Blockchain.expiredTime) {
+                        initDelay = Blockchain.expiredTime - diffTime;
+
+                        BlockLSH.myCohortHash = tx.getCohort();
+                        BlockLSH.readCohortID();
+                        System.out.println("insdie");
+                    }
+                }
+
+                fis.close();
+            } catch(Exception e) {
+                System.out.println("FETCHING ERROR: " + e);
+            }
+        }
+
+        executor.scheduleAtFixedRate(expiredRunnable, initDelay, Blockchain.expiredTime, TimeUnit.SECONDS);
+	
+	// on client closure, save currently up-to-date chain metadata
         Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
             public void run() {
                 System.out.println("updating chaintip data..");

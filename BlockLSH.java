@@ -1,5 +1,6 @@
 import java.io.*;
 import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Iterator;
@@ -10,7 +11,15 @@ public class BlockLSH {
     // ###############################################################################
     // ## The k-value (minimum number of people that should make up a valid cohort) ##
     // ###############################################################################
-    public static int kSize = 10;
+    public static int kSize = 2000;
+    
+    public static String myCohortHash = null;
+    public static String myCohortID = null;
+    
+    // #######################################################################
+    // ## Subsection of cohort hash to send to others (original is 50 bits) ##
+    // #######################################################################
+    public static int hashSize = 50;
 
 
     /** Calculates a cohort hash based on data provided (e.g. browsing history)
@@ -109,42 +118,66 @@ public class BlockLSH {
     public static String getCohortID(TreeSet<Transaction> txs, String myCohort) {
         int prefixSize = 0;
         String prefix = myCohort.substring(0, prefixSize);
+        String cohort;
 
         if(txs.isEmpty()) {
             System.out.println("txs empty");
-            return null;
+            cohort = "null";
         }
 
-        Iterator<Transaction> it = txs.iterator();
-        TreeSet<String> cohorts = new TreeSet<>();
+        else {
+            Iterator<Transaction> it = txs.iterator();
+            TreeSet<String> cohorts = new TreeSet<>();
 
-        while(it.hasNext()) {
-            String tx = it.next().getCohortID();
-            if (tx.startsWith(prefix)) {
-                cohorts.add(tx);
-            }
-        }
+            int saiz = 0;
 
-        for(;(cohorts.size() >= kSize);prefixSize+=1) {
-            Iterator<String> it2 = cohorts.iterator();
-            TreeSet<String> cohorts2 = new TreeSet<>();
-            prefix = myCohort.substring(0, prefixSize);
-
-            while(it2.hasNext()) {
-                String tx = it2.next();
+            while (it.hasNext()) {
+                String tx = it.next().getCohort();
                 if (tx.startsWith(prefix)) {
-                    cohorts2.add(tx);
+                    cohorts.add(tx);
                 }
             }
 
-            cohorts = (TreeSet<String>)cohorts2.clone();
+            for (; (cohorts.size() >= kSize) || (prefixSize==50); prefixSize += 1) {
+                Iterator<String> it2 = cohorts.iterator();
+                TreeSet<String> cohorts2 = new TreeSet<>();
+                prefix = myCohort.substring(0, prefixSize);
+
+                while (it2.hasNext()) {
+                    String tx = it2.next();
+                    if (tx.startsWith(prefix)) {
+                        cohorts2.add(tx);
+                    }
+                }
+                saiz = cohorts.size();
+                cohorts = (TreeSet<String>) cohorts2.clone();
+            }
+
+            cohort = myCohort.substring(0, prefixSize);
+            Main.kai.add(saiz);
         }
 
         if(prefixSize-1 <= 0) {
-            return null;
+            cohort = "null";
         }
 
-        return myCohort.substring(0, prefixSize);
+
+        if(new File("myCohortID").exists()) {
+            new File("myCohortID").delete();
+        }
+
+        try {
+            FileOutputStream fos = new FileOutputStream("myCohortID");
+            fos.write(cohort.getBytes(StandardCharsets.UTF_8));
+
+            fos.close();
+            myCohortID = cohort;
+            System.out.println("cohordID saved to file");
+        } catch (Exception e) {
+            System.out.println("Saving cohort to file error; " + e);
+        }
+
+        return cohort;
     }
 
     /** Creates a Transaction object and broadcasts it to other peers in the network
@@ -152,7 +185,9 @@ public class BlockLSH {
      */
     public static void sendTransaction(Network n) {
         // Create object and transmit it
-        Transaction tx = new Transaction(BlockLSH.getCohortHash());
+        String fullHash = BlockLSH.getCohortHash();
+        String minHash = fullHash.substring(0, hashSize);
+        Transaction tx = new Transaction(minHash);
 
         System.out.println("init: " + tx.toString());
 
@@ -163,20 +198,35 @@ public class BlockLSH {
 
         // send off tx to network
         n.announce(tx);
-        System.out.println("cohort id sent!");
+        System.out.println("cohort tx sent!");
+
+        myCohortHash = fullHash;
 
         // Save object to our own unconfirmed txs file
         try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(n.getTxFile(), true))) {
             oos.writeObject(tx);
-            System.out.println("TX RECEIVED: " + tx.toString());
+            System.out.println("TX ADD SAVED: " + tx.toString());
         } catch (Exception e) {
-            System.out.println("TX RCV ERROR: " + e);
+            System.out.println("TX ADD SAVE ERROR: " + e);
+        }
+
+        // Save own transaction object (with full version of hash)
+        if(new File("myCohortObj").exists()) {
+            new File("myCohortObj").delete();
+        }
+
+        try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream("myCohortObj", false))) {
+            tx.setCohort(fullHash);
+            oos.writeObject(tx);
+            System.out.println("TX SAVED: " + tx.toString());
+        } catch (Exception e) {
+            System.out.println("TX SAVE ERROR: " + e);
         }
 
         // TODO; ? if tx not official for a long time, resend it
     }
 
-    /** Creates a Transaction object and broadcasts it to other peers in the network
+    /** (**FOR TESTING PURPOSES**) Creates a Transaction object and broadcasts it to other peers in the network
      * @param n The Network object that the user is connected on
      */
     public static void sendTransaction(Network n, Transaction tx) {
@@ -194,9 +244,33 @@ public class BlockLSH {
         // Save object to our own unconfirmed txs file
         try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(n.getTxFile(), true))) {
             oos.writeObject(tx);
-            System.out.println("TX RECEIVED: " + tx.toString());
+            System.out.println("TX SAVED: " + tx.toString());
         } catch (Exception e) {
-            System.out.println("TX RCV ERROR: " + e);
+            System.out.println("TX SAVE ERROR: " + e);
         }
     }
+
+    // reads cohort ID from file
+    public static String readCohortID() {
+        String id = null;
+        try {
+            // Open file
+            FileInputStream fis = new FileInputStream("myCohortID");
+            BufferedReader br = new BufferedReader(new InputStreamReader(fis));
+
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while(( line = br.readLine()) != null) {
+                sb.append( line );
+            }
+            id = sb.toString();
+
+            myCohortID = id;
+        } catch(Exception e) {
+            System.out.println("(menu) COHORT FETCHING ERROR: " + e);
+        }
+
+        return id;
+    }
+
 }
